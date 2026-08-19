@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "author": "Robot-Fable",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-arduino-uno", "id": "uno", "top": 60, "left": 60 },
+    { "type": "wokwi-hc-sr04", "id": "us_front", "top": -120, "left": 60,
+      "attrs": { "distance": "30" } },
+    { "type": "wokwi-hc-sr04", "id": "us_left", "top": -120, "left": -180,
+      "attrs": { "distance": "9" } },
+    { "type": "wokwi-hc-sr04", "id": "us_right", "top": -120, "left": 300,
+      "attrs": { "distance": "9" } }
+  ],
+  "connections": [
+    [ "us_front:VCC", "uno:5V", "red", [] ],
+    [ "us_front:GND", "uno:GND.1", "black", [] ],
+    [ "us_front:TRIG", "uno:A0", "green", [] ],
+    [ "us_front:ECHO", "uno:A1", "blue", [] ],
+    [ "us_left:VCC", "uno:5V", "red", [] ],
+    [ "us_left:GND", "uno:GND.2", "black", [] ],
+    [ "us_left:TRIG", "uno:A2", "green", [] ],
+    [ "us_left:ECHO", "uno:A3", "blue", [] ],
+    [ "us_right:VCC", "uno:5V", "red", [] ],
+    [ "us_right:GND", "uno:GND.3", "black", [] ],
+    [ "us_right:TRIG", "uno:9", "green", [] ],
+    [ "us_right:ECHO", "uno:10", "blue", [] ]
+  ]
+}

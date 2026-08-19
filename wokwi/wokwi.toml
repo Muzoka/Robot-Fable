@@ -1,0 +1,4 @@
+[wokwi]
+version = 1
+firmware = "build/competition.ino.hex"
+elf = "build/competition.ino.elf"

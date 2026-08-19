@@ -21,9 +21,11 @@ only optimize time where it costs zero risk.
 | `docs/TRACK_NOTES.md` | Track geometry, derived numbers, route hypotheses per map |
 | `docs/RESEARCH.md` | Verified component facts + prior art the design is built on |
 | `docs/images/` | The three track photos |
-| `firmware/` | Arduino sketches (competition code + calibration suite) — Phase 2 |
-| `sim/` | Python track simulator used to tune the control logic — Phase 1 |
-| `wokwi/` | Wokwi project for logic-level verification — Phase 2 |
+| `docs/CALIBRATION_PROTOCOL.md` | The ~40-minute on-robot measurement session (Phase 3) |
+| `firmware/competition/` | The race sketch — compile-verified, map-select jumpers, hand-arming start |
+| `firmware/calibration/` | Serial-menu calibration suite the team runs on the robot |
+| `sim/` | Python track simulator used to design and tune the control logic |
+| `wokwi/` | Wokwi project verifying the state machine on scripted sensor scenarios |
 
 ## The robot
 

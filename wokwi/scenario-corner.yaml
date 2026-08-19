@@ -1,0 +1,42 @@
+# Headless logic test: boot -> self-test -> hand-arm -> cruise ->
+# corner approach -> decide -> turn -> back to cruising.
+# Run:  wokwi-cli wokwi --scenario scenario-corner.yaml --timeout 60000
+# (needs a free WOKWI_CLI_TOKEN from wokwi.com/ci)
+name: "corner sequence"
+version: 1
+author: "Robot-Fable"
+steps:
+  - wait-serial: "self-test OK"
+  # hand over the nose to arm, then remove it
+  - set-control:
+      part-id: us_front
+      control: distance
+      value: 6
+  - delay: 1200ms
+  - set-control:
+      part-id: us_front
+      control: distance
+      value: 100
+  - wait-serial: "armed"
+  - wait-serial: "-> CRUISE"
+  # a wall appears ahead: expect the approach chain
+  - delay: 2000ms
+  - set-control:
+      part-id: us_front
+      control: distance
+      value: 18
+  - wait-serial: "-> APPROACH"
+  - set-control:
+      part-id: us_front
+      control: distance
+      value: 8
+  - wait-serial: "-> DECIDE"
+  - wait-serial: "-> TURN"
+  # after the pivot the way ahead is open again
+  - set-control:
+      part-id: us_front
+      control: distance
+      value: 100
+  - wait-serial: "-> SQUARE"
+  - wait-serial: "-> REACQUIRE"
+  - wait-serial: "-> CRUISE"
