@@ -41,20 +41,29 @@ this same competition under the same GitHub account
 pins for everything else** and resolves the ambiguity naturally — the list
 is the same map with the labels slid one line:
 
+**Team-confirmed (2026-08-19):** D4→IN1, D5→ENA, D6→ENB, and the motor
+sides are LEFT on OUT1/OUT2, RIGHT on OUT3/OUT4. Final map:
+
 | Arduino pin | L298N | Role |
 |---|---|---|
-| D4 | IN1 | right motor direction |
-| D5 (PWM) | ENA | right motor speed |
-| D6 (PWM) | ENB | left motor speed |
-| D7 | IN2 | right motor direction |
-| D8 | IN3 | left motor direction |
-| D11 | IN4 | left motor direction |
+| D4 | IN1 | **left** motor direction |
+| D5 (PWM) | ENA | **left** motor speed |
+| D6 (PWM) | ENB | **right** motor speed |
+| D7 | IN2 | left motor direction |
+| D8 | IN3 | right motor direction |
+| D11 | IN4 | right motor direction |
 | D12 | — | **disconnected** (was the 5V-terminal wire — Fix 1) |
 
-So most likely **nothing needs rewiring except removing the D12 wire**.
-Please confirm with one close-up photo of the L298N end. If ENA truly is on
-D4, swap it with the D5 wire (IN1↔ENA) — the firmware pinout is
-`#define`-based either way.
+Nothing needs rewiring except removing the D12 wire. Note the sides are
+swapped relative to the Robotic-comp pin map (there ENA drove the right
+motor) — the firmware `#define`s carry the correct mapping.
+
+Also team-confirmed: the 18650 battery socket has a slide power switch,
+and the drift test (6 cm right / 150 cm) was run on the 2×3800 mAh cells
+with the Arduino OFF — i.e., at full raw pack voltage with no PWM. The
+mismatch ratio at our actual cruise PWM may differ (it is not constant
+across PWM), which is exactly why the Phase-3 trim calibration runs at the
+cruise PWM the robot will race at.
 
 Also **remove the two small jumper caps on ENA and ENB** if still present —
 they tie the enables to 5 V (permanent full speed) and would fight the
@@ -117,6 +126,29 @@ Sensor heights (sides 8.8 cm, front 5.4 cm) are fine against these walls;
 just confirm nothing on the chassis (wires, breadboard edge, caster mount)
 sits in front of any transducer — a jumper wire drooping into the beam is
 the classic source of phantom 3 cm readings.
+
+## Second measurement round (2026-08-19, photos + chat)
+
+- Chassis plate width 9.8 cm; tire width 2.6 cm each → 9.8 + 2×2.6 +
+  mounting gaps ≈ the 15.7 cm overall width ✓ consistent.
+- **Wheel diameter 6.2 cm** (drives all speed/turn math).
+- **Layout from photos: caster at the FRONT (under the low-mounted front
+  sensor), drive wheels at the REAR half.** Pivots therefore swing the nose
+  through the larger arc — modeled in the simulator; axle-to-front distance
+  still to be measured (photo estimate ~9–10 cm).
+- Side sensors sit on acrylic holders roughly over the wheel axle — the
+  favorable position. Exact fore/aft offset to be confirmed.
+- Drift quantified: 6 cm right over 150 cm (2.29°). That is a ~0.7 %
+  wheel-speed mismatch (a ~19 m-radius arc) — small; a few PWM counts of
+  trim plus the centering PID cover it.
+- Wiring loom risk (photos): long jumper loops arcing above the robot,
+  secured by two zip ties. Action before race day: shorten/bundle flat to
+  the chassis, keep all wires out of the three sensors' view cones, and
+  hot-glue/tape every DuPont connector shell. No rewiring — just securing.
+- Open questions from the photos: the under-chassis 2×18650 holder appears
+  empty and a loose DC barrel plug is visible — confirm which battery
+  actually powers the robot in runs and where the barrel plug goes; the
+  yellow-taped bundle on the top deck looks like it may be the cell pack.
 
 ## Team-reported field observations
 
