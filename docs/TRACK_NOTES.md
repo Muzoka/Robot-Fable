@@ -18,6 +18,34 @@ Common derived numbers:
 | "Opening" classification | side reading > ~20 cm or echo timeout |
 | Corner box (junction area) | 30.5 × 30.5 cm; centered robot has ~15.25 cm to each wall — pivot sweep must stay under that (need axle position to confirm) |
 
+## CONFIRMED layouts (organisers' spreadsheet, 2026-08-19)
+
+The team supplied the official map drawings
+(`Robotics_Competition_Maps_v2_5x5_grid.xlsx`, vendored in this folder):
+5×5 grid of 1 ft (30.5 cm) cells, wall thickness 0.75 in, wall height
+7.5 in. `sim/track.py` now builds all three maps cell-by-cell from these
+drawings. The photo-based reconstructions below are superseded.
+
+- **Map 1 — 3 sectors**: U ring. Up the west column (5 cells), east along
+  the top row, down the east column. Entrance and exit on the south wall.
+  Script: `[F:R, F:R]` — two right corners.
+- **Map 2 — 5 sectors**: top row east → down the east leg **straight
+  through the 4-way crossing** → around the lower loop (3 right corners)
+  → back into the crossing **straight again**, exiting through its east
+  arm. Script: `[F:R, X, F:R, F:R, F:R, X]`. This matches the team's
+  "go forward at the intersection" requirement exactly — the robot never
+  pivots inside the crossing.
+- **Map 3 — 9 sectors**: a pure serpentine — nine straight segments joined
+  by eight plain 90° corners, no branches, no T-junctions. Script:
+  `[F:R, F:R, F:L, F:L, F:L, F:L, F:R, F:R]`.
+
+**Design consequence (excellent news):** no map requires a side-opening
+('O') turn — the least robust maneuver class. Every junction in the whole
+competition is either a plain blocked-front corner or map 2's crossing,
+which are the two maneuvers the controller executes most reliably.
+
+Historical photo-based notes (superseded, kept for reference):
+
 ## Map 1 — "3 points" (`images/map-3pt.png`)
 
 What the photo shows: an outer ∩-shaped wall, a large solid block in the

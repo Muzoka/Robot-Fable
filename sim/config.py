@@ -41,7 +41,7 @@ TRACK_R_MM = TARGET_R_MM + 70.0
 ERR_CLAMP_MM = 40.0         # max believable centering error
 FRONT_BLOCKED_MM = 200.0    # wall ahead -> slow down, prepare to decide
 FRONT_OPEN_MM = 260.0       # way ahead is clear (hysteresis pair)
-FRONT_STOP_MM = 85.0        # stop line: axle ends ~centred in junction
+FRONT_STOP_MM = 88.0        # stop line: axle ends ~centred in junction
 FRONT_TOOCLOSE_MM = 32.0    # emergency: reverse first
 US_MIN_RELIABLE_MM = 45.0   # below this HC-SR04 output is garbage
 US_MAX_MM = 2000.0
@@ -93,7 +93,7 @@ BACKUP_MS = 450
 STUCK_MS = 1100             # sonar readings frozen this long = stuck
 STUCK_FRONT_MM = 400.0      # stuck detection active only when nearing something
 FRONT_FAR_MM = 400.0        # front must exceed this for finish detection
-DECIDE_REVERSE_MS = 260     # blind-zone escape before pivoting
+DECIDE_REVERSE_MS = 340     # blind-zone escape before pivoting
 CHAOS_JUMP_MM = 150.0       # front refresh-to-refresh jump counted as chaos
 CHAOS_TRIP = 6              # chaos score that triggers a defensive backup
 FINISH_OPEN_TICKS = 35

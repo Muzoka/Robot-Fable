@@ -136,7 +136,7 @@ if __name__ == '__main__':
     if cmd == 'one':
         m = sys.argv[2]
         seed = int(sys.argv[3]) if len(sys.argv) > 3 else 0
-        r = run_once(m, seed, record=True)
+        r = run_once(m, seed, degraded='--deg' in sys.argv, record=True)
         print(r['result'], f"{r['time_s']:.1f}s", 'contacts', r['contacts'],
               'backups', r['backups'], 'script_left', r['script_left'],
               r['anomalies'][:5])

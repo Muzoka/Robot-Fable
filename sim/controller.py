@@ -56,7 +56,8 @@ class Controller:
         self.pwm_l += max(-d, min(d, tl - self.pwm_l))
         self.pwm_r += max(-d, min(d, tr - self.pwm_r))
 
-    def _steer(self, sonar, base, gain=1.0, refreshed=None, kd_only=False):
+    def _steer(self, sonar, base, gain=1.0, refreshed=None, kd_only=False,
+               both_only=False):
         """Wall-centering PD. Positive error = robot right of centre.
         The derivative only updates when a side sensor actually refreshed
         (every 80 ms) — differentiating stale data invents spikes.
@@ -72,6 +73,8 @@ class Controller:
             and (rl is None or rl < C.TRACK_L_MM + 60)
         rw = sonar.wall('R') and R < C.TRACK_R_MM \
             and (rr is None or rr < C.TRACK_R_MM + 60)
+        if both_only and not (lw and rw):
+            lw = rw = False                # junction ahead: hold, don't chase
         if lw and rw:
             err = ((L - C.TARGET_L_MM) - (R - C.TARGET_R_MM)) / 2.0
         elif lw:
@@ -266,7 +269,9 @@ class Controller:
                     return
         both = sonar.wall('L') and sonar.wall('R')
         base = C.PWM_CRUISE if both else C.PWM_SLOW + 20
-        self._slew(*self._steer(sonar, base, refreshed=refreshed))
+        x_pend = nxt is not None and nxt[0] == 'X'
+        self._slew(*self._steer(sonar, base, refreshed=refreshed,
+                                both_only=x_pend))
 
     def _st_approach(self, sonar, refreshed, F):
         """Committed approach: once armed, creep to the stop line; a mid-
@@ -327,7 +332,9 @@ class Controller:
                 self.front_blocked_n = 0
                 self._enter('CRUISE')
                 return
-            if sonar.far['F'] or F < 60.0:
+            if sonar.far['F'] or F < 60.0 or \
+                    (self.last_valid_f is not None
+                     and self.last_valid_f < 70.0):
                 self.dec_phase = 1         # blind-zone escape reverse
                 self.timer = 0
                 return
@@ -439,7 +446,7 @@ class Controller:
         if not ok and self.turn_retries < 2:
             self.turn_retries += 1
             self.trims_done = 0
-            self.turn_rev_ms = 380         # back out, then finish the turn
+            self.turn_rev_ms = 450         # back out, then finish the turn
             self.timer = dur + C.POST_TURN_SETTLE_MS
             return
         self.err_prev = 0.0
@@ -501,7 +508,7 @@ class Controller:
             self._enter('SQUARE')
             return
         self._slew(*self._steer(sonar, C.PWM_SLOW, gain=1.0,
-                                refreshed=refreshed))
+                                refreshed=refreshed, both_only=True))
 
     def _st_creep(self, sonar, refreshed, F):
         self.brake = False
