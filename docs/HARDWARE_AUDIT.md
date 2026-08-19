@@ -118,6 +118,22 @@ just confirm nothing on the chassis (wires, breadboard edge, caster mount)
 sits in front of any transducer — a jumper wire drooping into the beam is
 the classic source of phantom 3 cm readings.
 
+## Team-reported field observations
+
+- **The robot drifts slightly to the RIGHT when driven straight open-loop**
+  (equal power, just powered up and told to go forward). Meaning: the left
+  motor is effectively a bit faster than the right at the same PWM — the
+  expected ±10 % TT-motor tolerance showing up. Handled three ways, in
+  layers: (1) a `TRIM_RIGHT_PWM` constant (a few extra PWM counts to the
+  right motor) calibrated in Phase 3 at the exact cruise PWM — this removes
+  the bias; (2) the wall-centering PID absorbs whatever bias remains while
+  walls are visible; (3) in wall-less stretches (the intersection) the
+  robot drives with the calibrated trim applied, which is why measuring it
+  accurately matters — trim quality is what carries the robot straight
+  through the crossing. Note the trim is *not* a constant ratio across PWM
+  values or battery voltages, so it gets measured at cruise PWM and race
+  charge, not once at full throttle.
+
 ## Confirmations requested from the team
 
 1. Close-up photo of the L298N with wires attached (settles D4/ENA/ENB).
