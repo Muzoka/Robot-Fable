@@ -16,8 +16,17 @@ import sim.config as C
 
 
 class Controller:
-    def __init__(self, script):
-        self.script = list(script)
+    def __init__(self, script, auto=False):
+        # auto=True: map-agnostic mode. No script. The universal rule set
+        # for these tracks (and any chain of them): follow the corridor;
+        # at a blocked front turn to the open side (wiggle-verify if both
+        # look open); at a both-sides-open crossing drive straight through;
+        # only sustained all-open space is the exit. Works because every
+        # turn on every official map is forced and every crossing is a
+        # straight-through.
+        self.auto = auto
+        self.auto_wig = False
+        self.script = [] if auto else list(script)
         self.state = 'CRUISE'
         self.timer = 0
         self.pwm_l = 0
@@ -48,6 +57,8 @@ class Controller:
         self.fin_wall_n = 0
         self.appr_abort_n = 0
         self.empty_blocks = 0
+        self.x_fclear_ms = 0
+        self.forced_dir = None
 
     # ---------------- helpers ----------------
 
@@ -133,6 +144,7 @@ class Controller:
 
     def tick(self, sonar, refreshed):
         self.timer += C.LOOP_MS
+        self.run_ms = getattr(self, 'run_ms', 0) + C.LOOP_MS
         F = sonar.dist('F')
         self._edges(sonar, refreshed)
         if refreshed == 'F':
@@ -186,6 +198,28 @@ class Controller:
             else:
                 self.stuck_ms = 0
                 self.last_meds = None
+            # progress watchdog: a wedged robot with NOISY sensors never
+            # trips the frozen-readings detector. Coarser net: in CRUISE,
+            # commanded forward, front valid & inside 700 mm, yet the front
+            # distance stays inside a +-40 mm band for 6 s -> not moving.
+            prog_near = (sonar.med['F'] is not None and not sonar.far['F']
+                         and F < 700.0)
+            if self.state == 'CRUISE' and prog_near \
+                    and self.pwm_l > 0 and self.pwm_r > 0 and not self.brake:
+                f_ref = getattr(self, 'f_ref', None)
+                if f_ref is None or abs(F - f_ref) > 40.0:
+                    self.f_ref = F
+                    self.prog_ms = 0
+                else:
+                    self.prog_ms = getattr(self, 'prog_ms', 0) + C.LOOP_MS
+                if getattr(self, 'prog_ms', 0) > 6000:
+                    self.f_ref = None
+                    self.prog_ms = 0
+                    self.anomaly.append('no-progress')
+                    self._enter('BACKUP')
+            else:
+                self.f_ref = None
+                self.prog_ms = 0
 
         getattr(self, '_st_' + self.state.lower())(sonar, refreshed, F)
         return self.pwm_l, self.pwm_r, self.brake
@@ -196,8 +230,12 @@ class Controller:
         if state in ('DECIDE', 'BACKUP'):
             self.brake = True
             self.pwm_l = self.pwm_r = 0
+        if state == 'BACKUP':
+            self.last_backup_ms = getattr(self, 'run_ms', 0)
         if state == 'DECIDE':
             self.dec_phase = 0
+        if state == 'CROSS':
+            self.x_fclear_ms = 0
         if state == 'APPROACH':
             self.appr_far_ms = 0
         if state in ('TURN', 'BACKUP'):
@@ -206,6 +244,8 @@ class Controller:
             self.trims_done = 0
             self.turn_retries = 0
             self.turn_rev_ms = 0
+            self.back_trims = 0
+            self.back_ms = 0
 
     # -------- states --------
 
@@ -223,10 +263,17 @@ class Controller:
             self._enter('APPROACH')
             return
         nxt = self._next()
-        # crossing pending? on the both-sides-open signature, take it as an
-        # active straight-through maneuver
-        if nxt and nxt[0] == 'X':
-            if not sonar.wall('L') and not sonar.wall('R'):
+        # crossing pending (scripted X, or always in auto mode)? on the
+        # both-sides-open signature, take it as an active straight-through.
+        # In auto the front must ALSO be open: at a real crossing straight
+        # ahead is clear, while at a corner a side mirage plus a nearing
+        # front wall would otherwise fake this signature and drive the
+        # robot into the corner.
+        if self.auto or (nxt and nxt[0] == 'X'):
+            f_openish = sonar.far['F'] or sonar.med['F'] is None \
+                or F > C.FRONT_FAR_MM
+            if (f_openish or not self.auto) \
+                    and not sonar.wall('L') and not sonar.wall('R'):
                 self.x_open_n += 1
                 if self.x_open_n >= 6:
                     self.x_open_n = 0
@@ -260,7 +307,19 @@ class Controller:
             else:
                 f_open = (sonar.far['F'] or sonar.med['F'] is None
                           or F > C.FRONT_FAR_MM)
-                if not lw and not rw and f_open:
+                if self.auto:
+                    # strict: a yawed robot inside the maze reads 230-450mm
+                    # on both sides ("not wall" but not open floor), and a
+                    # wedged robot at a junction sees open arms with a
+                    # static valid front. The real exit reads FAR. Demand it.
+                    sides_far = (sonar.far['L'] or sonar.dist('L') > 500) \
+                        and (sonar.far['R'] or sonar.dist('R') > 500)
+                    f_far = sonar.far['F'] or sonar.med['F'] is None \
+                        or F > 700.0
+                    open_now = sides_far and f_far
+                else:
+                    open_now = not lw and not rw and f_open
+                if open_now:
                     self.all_open_n += 1
                 else:
                     self.all_open_n = 0
@@ -269,7 +328,10 @@ class Controller:
                     return
         both = sonar.wall('L') and sonar.wall('R')
         base = C.PWM_CRUISE if both else C.PWM_SLOW + 20
-        x_pend = nxt is not None and nxt[0] == 'X'
+        # auto mode steers both-walls-only everywhere: near any opening it
+        # holds straight on trim instead of chasing the gap (the scripted
+        # X behavior, generalized - openings are never turned into)
+        x_pend = self.auto or (nxt is not None and nxt[0] == 'X')
         self._slew(*self._steer(sonar, base, refreshed=refreshed,
                                 both_only=x_pend))
 
@@ -367,16 +429,79 @@ class Controller:
                 self.pwm_l = self.pwm_r = 0
                 return
             if self.wiggle_hit:
-                # not a real opening: restore the script entry and demand a
-                # fresh wall->open edge before it may fire again
-                self.script.insert(0, ('O', self.turn_dir))
-                self.side_was_wall[self.turn_dir] = False
-                self.open_n[self.turn_dir] = 0
-                self.turn_dir = None
-                self.front_blocked_n = 0
-                self._enter('CRUISE')
-                return
+                if self.auto_wig:
+                    # auto corner with both sides reading open: the chosen
+                    # side answered with a wall - it was a mirage. Turn the
+                    # other way instead.
+                    self.auto_wig = False
+                    self.turn_dir = 'L' if self.turn_dir == 'R' else 'R'
+                    self.dec_phase = 2
+                else:
+                    # not a real opening: restore the script entry and
+                    # demand a fresh wall->open edge before it fires again
+                    self.script.insert(0, ('O', self.turn_dir))
+                    self.side_was_wall[self.turn_dir] = False
+                    self.open_n[self.turn_dir] = 0
+                    self.turn_dir = None
+                    self.front_blocked_n = 0
+                    self._enter('CRUISE')
+                    return
+            else:
+                self.auto_wig = False
             self.dec_phase = 2
+        if self.turn_dir is None and self.auto:
+            # map-agnostic corner: turn to the side the sensors say is open.
+            # Every turn on the official maps is forced (exactly one side
+            # open), so this is a read, not a guess.
+            l_open = sonar.far['L'] or sonar.med['L'] is None \
+                or sonar.dist('L') > C.SIDE_OPEN_MM
+            r_open = sonar.far['R'] or sonar.med['R'] is None \
+                or sonar.dist('R') > C.SIDE_OPEN_MM
+            if l_open != r_open:
+                self.empty_blocks = 0
+                self.forced_dir = None
+                self.turn_dir = 'L' if l_open else 'R'
+            elif l_open and r_open:
+                # both look open: T-junction (not on these maps) or a
+                # specular mirage. A VALID medium echo proves an opening
+                # (the sensor sees the next corridor's far wall); silence/
+                # far-latch proves nothing - a wall can mirage invisible
+                # for seconds. Prefer proof; wiggle only if tied.
+                self.empty_blocks = 0
+                self.forced_dir = None
+                l_val = (not sonar.far['L']) and sonar.med['L'] is not None
+                r_val = (not sonar.far['R']) and sonar.med['R'] is not None
+                if l_val != r_val:
+                    self.turn_dir = 'L' if l_val else 'R'
+                    self._enter('TURN')
+                    return
+                self.turn_dir = 'L' if sonar.dist('L') > sonar.dist('R') \
+                    else 'R'
+                self.dec_phase = 3
+                self.wiggle_hit = False
+                self.auto_wig = True
+                self.timer = 0
+                return
+            else:
+                # neither side open: dead end (never on these maps) or a
+                # phantom front block - realign first, force a turn after 3.
+                # Remember the forced direction: if we get blocked again
+                # right away, keep turning the SAME way (a committed 180
+                # escapes a pocket; flip-flopping on noisy width readings
+                # never does).
+                self.anomaly.append('auto-no-side-open')
+                self.empty_blocks += 1
+                if self.empty_blocks < 3:
+                    self.front_blocked_n = 0
+                    self._enter('BACKUP')
+                    return
+                self.empty_blocks = 0
+                if self.forced_dir is None:
+                    self.forced_dir = 'L' \
+                        if sonar.dist('L') > sonar.dist('R') else 'R'
+                self.turn_dir = self.forced_dir
+            self._enter('TURN')
+            return
         if self.turn_dir is None:          # front-blocked path (not CREEP)
             nxt = self._next()
             if nxt and nxt[0] == 'X':
@@ -415,6 +540,22 @@ class Controller:
         dur = C.TURN90_MS_L if self.turn_dir == 'L' else C.TURN90_MS_R
         if self.turn_retries:
             dur = int(dur * 0.6)           # finishing an interrupted pivot
+        # over-rotation unwind (auto): pivot BACK until the outer wall
+        # appears, then settle and re-verify
+        if self.back_ms > 0:
+            outer = 'L' if self.turn_dir == 'R' else 'R'
+            raw = sonar.last_raw[outer]
+            self.back_ms -= C.LOOP_MS
+            if (raw is not None and raw < 300.0) or self.back_ms <= 0:
+                self.back_ms = 0
+                self.timer = dur           # -> settle, then verify again
+                return
+            p = C.PWM_TURN
+            if self.turn_dir == 'L':       # unwind = opposite of the turn
+                self.pwm_l, self.pwm_r = p, -p
+            else:
+                self.pwm_l, self.pwm_r = -p, p
+            return
         if self.timer <= dur:
             p = C.PWM_TURN
             if self.turn_dir == 'L':
@@ -439,6 +580,19 @@ class Controller:
             return
         ok = sonar.far['F'] or sonar.med['F'] is None or \
             sonar.dist('F') > C.FRONT_OPEN_MM
+        # auto: front-open alone cannot tell a 90 from a 180 (both face
+        # corridors). After a true corner turn the OLD front wall must sit
+        # on the outboard side. If it doesn't, we over-rotated: unwind
+        # until it appears (once per turn).
+        if self.auto and ok and self.back_trims < 1:
+            outer = 'L' if self.turn_dir == 'R' else 'R'
+            outer_wall = (sonar.med[outer] is not None
+                          and not sonar.far[outer]
+                          and sonar.dist(outer) < 350.0)
+            if not outer_wall:
+                self.back_trims += 1
+                self.back_ms = int(dur * 0.75)
+                return
         if not ok and self.trims_done < C.TURN_MAX_TRIMS:
             self.trims_done += 1
             self.timer = dur - C.TURN_TRIM_PULSE_MS   # one more short pulse
@@ -491,6 +645,34 @@ class Controller:
             self.pwm_l = self.pwm_r = 0
             return
         self.brake = False
+        # auto mode: a "crossing" whose walls never come back, with truly
+        # FAR readings all around, is the exit mouth - hand over to FINISH
+        # (which bounces back to CRUISE if a wall reappears). Extra guards
+        # against a robot wedged at a junction corner (arms read open while
+        # it isn't moving): the front must be genuinely far, and a valid
+        # front must have CHANGED since crossing entry (proof of motion).
+        # echo-free-front clock: a true exit sees NOTHING ahead. A wedged
+        # robot's front flickers between valid mid-range and far - any
+        # valid raw under 900 mm resets the clock.
+        raw_f = sonar.last_raw['F']
+        if refreshed == 'F' and raw_f is not None and raw_f < 900.0:
+            self.x_fclear_ms = 0
+        else:
+            self.x_fclear_ms += C.LOOP_MS
+        if self.auto and self.timer > 2000 \
+                and (sonar.far['L'] or sonar.dist('L') > 500) \
+                and (sonar.far['R'] or sonar.dist('R') > 500) \
+                and (sonar.far['F'] or sonar.med['F'] is None or F > 700.0):
+            # motion proof: if a valid front was seen during this crossing,
+            # only a VALID front that has moved >60 mm since then counts -
+            # a far-flag now proves nothing (mirages read far too)
+            # ... and never within 5 s of a BACKUP: a real exit is reached
+            # cruising, not thrashing in a pocket with mirage-far sensors
+            calm = getattr(self, 'run_ms', 0) \
+                - getattr(self, 'last_backup_ms', -99999) > 5000
+            if self.x_fclear_ms > 1000 and calm:
+                self._enter('FINISH')
+                return
         done = self.timer >= C.CROSS_MAX_MS
         if self.timer > C.CROSS_MIN_MS and sonar.wall('L') and sonar.wall('R'):
             self.x_close_n += 1
@@ -553,6 +735,13 @@ class Controller:
         self.brake = False
         # a wall came back on either side: crossing or wall-hug, not exit
         if sonar.wall('L') or sonar.wall('R'):
+            self.all_open_n = 0
+            self._enter('CRUISE')
+            return
+        # auto: a valid close front during the exit drive means we are NOT
+        # driving out an open mouth - bail back to navigation
+        if self.auto and not sonar.far['F'] and sonar.med['F'] is not None \
+                and F < 300.0:
             self.all_open_n = 0
             self._enter('CRUISE')
             return

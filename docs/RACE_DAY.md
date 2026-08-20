@@ -39,13 +39,22 @@ in ~10 minutes, and the race sketch picks them up automatically.
 
 ## Per run
 
-1. **Map select** (set BEFORE power-on; jumper wire from pin to GND):
-   - Map 1: no jumper
-   - Map 2: D2 → GND
-   - Map 3: D3 → GND
+1. **Mode select** (set BEFORE power-on; jumper wire from pin to GND):
+   - **No jumper = AUTO — the default. Use this.** The robot navigates
+     ANY of the three maps, and any chain of maps joined together,
+     without being told which one: it follows the corridor, turns to the
+     side its sensors prove open, drives straight through crossings, and
+     recognises the exit by sustained truly-open space. Simulator score:
+     149/150 across all maps (beats the scripted mode's 146/150).
+   - Scripted fallbacks (only if AUTO misbehaves on the day):
+     Map 2: D2 → GND · Map 3: D3 → GND · Map 1: BOTH D2 and D3 → GND
 2. Place the robot **centred in the start cell, nose square** to the
-   corridor. Placement is half the run: the self-test refuses to arm if
-   the side-distance sum looks wrong (LED blink code 6) — re-place it.
+   corridor. Placement matters more than ever: the self-test now
+   **measures the corridor at the start line and calibrates its
+   centering targets from your placement** (so it adapts to the venue's
+   real track width — no more blink-6 on a slightly different corridor).
+   It still refuses (code 6) if a reading is implausible — usually a
+   wire drooping into a sensor's beam or the robot not between walls.
 3. Power on. LED goes **solid** when the self-test passes.
 4. **Hold a hand ~5–8 cm in front of the FRONT sensor for half a
    second, then pull it away.** The LED fast-blinks a 2 s countdown and
@@ -60,7 +69,7 @@ in ~10 minutes, and the race sketch picks them up automatically.
 | 3 | left sensor dead |
 | 4 | right sensor dead |
 | 5 | side sensors not answering consistently |
-| 6 | side-distance sum implausible — robot badly placed in the cell |
+| 6 | side readings implausible — wire in a sensor's beam, or robot not between two walls |
 
 ## If something looks off between runs
 
@@ -73,12 +82,18 @@ in ~10 minutes, and the race sketch picks them up automatically.
 - A wheel not moving at all → the left-channel connection (see night-
   before list); wiggle-test it on the spot.
 
-## What the robot will do on each map (so you can spot a wrong-map run)
+## What a correct run looks like (so you can spot trouble early)
 
-- **Map 1** (no jumper): two right turns around the U, exit.
-- **Map 2** (D2): right turn, straight THROUGH the 4-way crossing,
-  three rights, straight through the crossing again, exit.
-- **Map 3** (D3): serpentine — R R L L L L R R, exit.
+In AUTO the robot needs no map knowledge, but the routes it should
+produce are:
 
-If the robot turns where it should cross (or vice versa), the wrong map
-jumper is set — abort, fix the jumper, restart.
+- **Map 1**: two right turns around the U, exit.
+- **Map 2**: right turn, straight THROUGH the 4-way crossing, three
+  rights, straight through the crossing again, exit.
+- **Map 3**: serpentine — R R L L L L R R, exit.
+- **Chained maps**: the same behaviors back to back; a small gap between
+  joined maps reads as a crossing and is driven straight through.
+
+A short pause before every turn (stop → think → pivot → re-square) is
+normal and intended. Occasional single back-up-and-retry moves are the
+recovery system working, not a fault.

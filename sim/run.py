@@ -15,7 +15,7 @@ PHYS_DT = 0.005                      # 200 Hz physics
 TICKS_PER_LOOP = int(C.LOOP_MS / 1000 / PHYS_DT)
 
 
-def run_once(map_name, seed=0, degraded=False, record=False):
+def run_once(map_name, seed=0, degraded=False, record=False, auto=False):
     rng = np.random.default_rng(seed)
     track = MAPS[map_name]()
     # perturbations. The race plan calibrates turn times / deadband at race
@@ -44,7 +44,7 @@ def run_once(map_name, seed=0, degraded=False, record=False):
                   db_sustain=C.PWM_FLOOR - 15 + db_shift)
     robot.th += yaw
     sonar = SonarSuite(track, rng, noise_mm=noise, dropout=drop)
-    ctl = Controller(track.script)
+    ctl = Controller(track.script, auto=auto)
 
     path = []
     log = []
@@ -103,13 +103,15 @@ def plot_run(r, fname):
     plt.close(fig)
 
 
-def monte_carlo(n=25):
+def monte_carlo(n=25, auto=False):
+    tag = 'AUTO (no script)' if auto else 'scripted'
+    print(f"-- {tag} --")
     print(f"{'map':10s} {'mode':9s} {'done':>5s} {'contact-free':>12s} "
           f"{'avg contacts':>12s} {'avg time':>9s}")
     all_ok = True
     for mname in ('map1', 'map2', 'map3'):
         for degraded in (False, True):
-            res = [run_once(mname, seed=s, degraded=degraded)
+            res = [run_once(mname, seed=s, degraded=degraded, auto=auto)
                    for s in range(n)]
             ok = sum(r['result'] == 'success' for r in res)
             cf = sum(r['result'] == 'success' and r['contacts'] == 0
@@ -136,7 +138,8 @@ if __name__ == '__main__':
     if cmd == 'one':
         m = sys.argv[2]
         seed = int(sys.argv[3]) if len(sys.argv) > 3 else 0
-        r = run_once(m, seed, degraded='--deg' in sys.argv, record=True)
+        r = run_once(m, seed, degraded='--deg' in sys.argv, record=True,
+                     auto='--auto' in sys.argv)
         print(r['result'], f"{r['time_s']:.1f}s", 'contacts', r['contacts'],
               'backups', r['backups'], 'script_left', r['script_left'],
               r['anomalies'][:5])
@@ -149,5 +152,6 @@ if __name__ == '__main__':
             plot_run(r, out)
             print('wrote', out)
     else:
-        n = int(sys.argv[2]) if len(sys.argv) > 2 else 25
-        monte_carlo(n)
+        args = [a for a in sys.argv[2:] if not a.startswith('--')]
+        n = int(args[0]) if args else 25
+        monte_carlo(n, auto='--auto' in sys.argv)
