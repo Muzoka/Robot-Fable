@@ -26,6 +26,32 @@ The sketch is designed so you NEVER walk with the laptop:
   deadband test uses short pulses so the robot only creeps — keep it
   next to the laptop and nudge it back between pulses.
 
+## Battery policy (decided 2026-08-20)
+
+The team has 2×3800 mAh and 2×5000 mAh "Lucky Sky" 18650 cells.
+
+- **Race pair = the two 3800 mAh cells** — the pair the drift test already
+  ran on. The 5000 pair is the emergency backup (note it isn't internally
+  matched: one prints 3.6 V, one 3.7 V).
+- **Never mix a 3800 with a 5000 in the holder** — series cells must be a
+  matched pair or one over-drains and the pack collapses mid-run.
+- **Calibrate and race on the same pair at the same charge level.** Turn
+  timing follows battery voltage; the numbers belong to "these two cells,
+  freshly charged". Charge fully before the calibration session and again
+  before the competition.
+- Optional tiebreaker: run test 8 once per fully-charged pair and time
+  the marked metre; the faster, more consistent pair sags less — use it.
+
+## Collecting the results for Claude
+
+The Serial Monitor does NOT keep text across an unplug/reopen — but your
+adjustments live in the robot's EEPROM, and unplugged-run results are
+physical observations. So: keep a notes file open; AFTER each test (before
+the next unplug) copy the serial text into it and add your measurement in
+plain words ("drifted RIGHT ~5 cm", "4 pivots ended ~25° short, CCW").
+Send the whole file to Claude at the end, or in parts. Screen photos are
+fine whenever copying is awkward.
+
 ## Before you start (one-time hardware checklist)
 
 1. ✅ D12 → L298N "5V" wire — **already removed by the team** (confirmed).
