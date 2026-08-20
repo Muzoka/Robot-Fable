@@ -62,6 +62,16 @@ fine whenever copying is awkward.
    tape each DuPont connector shell.
 4. Fresh-charged 18650s, slide switch ON, USB connected for serial.
 
+## If a wheel spins on its own at power-up
+
+A 1–2 s twitch at plug-in is normal (pins float until the program starts).
+Continuous spinning means the motor pins aren't being driven: usually the
+calibration sketch isn't uploaded yet, or the ENA/ENB jumper caps are
+still on the L298N (they force motors enabled - pull them off), or a
+direction wire (D4/D7 left, D8/D11 right) slipped out. Nothing is damaged
+by a free-spinning wheel. After uploading the sketch both wheels must sit
+silent at the menu; test 1 then verifies each motor properly.
+
 ## The tests
 
 | # | Test | Robot placement | You report |
