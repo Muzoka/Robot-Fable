@@ -155,6 +155,18 @@ the classic source of phantom 3 cm readings.
 - ✅ **D12 → L298N 5V wire removed by the team** — Fix 1 is DONE.
 - ✅ ENA→~D5 (left speed) and ENB→~D6 (right speed) re-confirmed by the
   team; matches the firmware pinout exactly.
+- ✅ **ENA/ENB jumper caps found and removed** during the calibration
+  session (they had been hidden under the wire loom; symptoms: full-power
+  lunges regardless of commanded PWM, wheel spinning at power-on).
+  D5/D6 wires re-seated onto the freed ENA/ENB signal pins; the +5V
+  partner pins left empty.
+- ✅ **Calibration test 0 (enable-wire check) PASSES**: both wheels still
+  at speed-zero with direction pins active, medium spin at PWM 140.
+  This is the robot's first verified real speed control — all earlier
+  driving (including the original drift test) was effectively full-power
+  only, so pre-session drive observations are superseded by the
+  calibration measurements.
+- ✅ Motor directions verified correct (test 1): no inversion needed.
 
 ## Team-reported field observations
 
