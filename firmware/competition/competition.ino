@@ -19,10 +19,11 @@
  *   D13      onboard LED (status)
  *   D12      free (the old wire to the L298N 5V terminal MUST be removed)
  *
- * MAP SELECT (internal pull-ups; jumper wire from pin to GND):
- *   no jumper          -> map 1 (3 sectors)
- *   D2 to GND          -> map 2 (5 sectors)
- *   D3 to GND          -> map 3 (9 sectors)
+ * MODE SELECT (internal pull-ups; jumper wire from pin to GND):
+ *   no jumper          -> AUTO: solves any map / any chain of maps (default)
+ *   D2 to GND          -> map 2 scripted (fallback)
+ *   D3 to GND          -> map 3 scripted (fallback)
+ *   D2 AND D3 to GND   -> map 1 scripted (fallback)
  *
  * START RITUAL (no button needed):
  *   power on -> self-test (LED solid on pass; error blink codes on fail)
@@ -103,7 +104,12 @@ float targetL = TARGET_L_MM, targetR = TARGET_R_MM;
 // R 115-125; kick-sustain floor ~110-130. All speeds sit above the worst
 // wheel with margin; a kick-start pulse (KICK_MS below) guarantees
 // breakaway from standstill.
-#define PWM_FLOOR       150      // CAL: never command the dead zone
+// FLOOR is anchored to the kick-SUSTAIN floor (~110-130 tired), not the
+// static breakaway: while rolling, 130 keeps a wheel turning, and every
+// start from standstill gets the full-power kick anyway. A higher floor
+// (150) collapsed inner-wheel steering authority (slow base 160 minus
+// steer 80 clamps at the floor - the inner wheel could barely slow down).
+#define PWM_FLOOR       130      // CAL: never command the dead zone
 #define PWM_CRUISE      180      // CAL: verified driving in tests 3/8
 #define PWM_SLOW        160
 #define PWM_TURN        200      // CAL: verified pivoting in test 4
@@ -128,7 +134,11 @@ float targetL = TARGET_L_MM, targetR = TARGET_R_MM;
 #define TURN90_R_DEFAULT 250     // CAL test 4 (tired pack read 290-300)
 #define TRIM_R_DEFAULT   0       // CAL test 3 (fresh 0; tired drifted -13)
 #define TURN_TRIM_PULSE_MS 45    // ~10-15 deg nudge at PWM_TURN 200
-#define WIG_SEG_MS      60       // wiggle-check segment (was 120 @ 680ms turns)
+// Wiggle segment: 80 ms/seg = 320 ms sweep, +-~29 deg at the 200-PWM
+// pivot rate, ~4 raw samples of the checked side (sides refresh every
+// 80 ms). The sim validated ~16 deg / 6 samples at its slower pivots;
+// the wider sweep buys back detection odds the fewer samples cost.
+#define WIG_SEG_MS      80
 #define TURN_MAX_TRIMS  2
 #define TURN_REV_MS     450
 #define SETTLE_MS       250
@@ -173,7 +183,9 @@ char forcedDir = 0;            // committed direction for pocket escapes
 uint8_t backTrims = 0;         // over-rotation unwinds used this turn
 int backMs = 0;                // unwind budget countdown
 int xFclearMs = 0;             // echo-free-front clock inside CROSS
-unsigned long lastBackupMs = 0;
+// "~60 s before boot": the calm-after-backup finish gate must not treat
+// power-on as a recent backup (unsigned wrap makes this read as -60 s)
+unsigned long lastBackupMs = (unsigned long)(-60000L);
 int progMs = 0;                // progress watchdog accumulator
 float fRef = -1.0f;            // progress watchdog front reference
 
@@ -309,12 +321,16 @@ void writePair(int l, int r, bool brake) {
     writeMotor(true, l, brake); writeMotor(false, r, brake);
     return;
   }
-  bool straight = (l > 0 && r > 0) || (l < 0 && r < 0);
-  if (wasStopped && straight) kickUntil = millis() + KICK_MS;
+  // forward starts only: reverse maneuvers are TIMED (decide-escape,
+  // turn back-out, backup) and were validated at plain PWM_BACK - a kick
+  // would lengthen every reverse by ~3-4 cm and erase BACKUP's steering
+  // bias. PWM_BACK 170 clears the measured breakaway (<=140) on its own.
+  bool fwd = (l > 0 && r > 0);
+  if (wasStopped && fwd) kickUntil = millis() + KICK_MS;
   wasStopped = false;
-  if (straight && (long)(kickUntil - millis()) > 0) {
-    writeMotor(true,  l > 0 ? 255 : -255, false);
-    writeMotor(false, r > 0 ? 255 : -255, false);
+  if (fwd && (long)(kickUntil - millis()) > 0) {
+    writeMotor(true,  255, false);
+    writeMotor(false, 255, false);
   } else {
     writeMotor(true, l, false); writeMotor(false, r, false);
   }
@@ -578,8 +594,9 @@ void stCruise(uint8_t rf, float F) {
       if (allOpenN >= FINISH_OPEN_TICKS) { enterState(ST_FINISH); return; }
     }
   }
-  bool both = wallAt(SL) && wallAt(SR);
-  int base = both ? PWM_CRUISE : PWM_CRUISE - 10;   // single wall: gentler
+  // sim's validated base is effectively cruise on one wall or two (its
+  // single-wall value differs by ~5% - noise); keep them equal here
+  int base = PWM_CRUISE;
   // auto steers both-walls-only everywhere: near any opening it holds
   // straight on trim instead of chasing the gap
   bool xPend = autoMode || (nx && nx->trig == 'X');
