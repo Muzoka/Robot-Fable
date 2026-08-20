@@ -213,23 +213,49 @@ void t1_direction() {
 }
 
 void t2_deadband() {
-  Serial.println(F("\n-- 2: DEADBAND, pulsed. Robot ON THE FLOOR next to"));
-  Serial.println(F("the laptop; each PWM step pulses 0.4 s then stops, so"));
-  Serial.println(F("the robot only creeps. Nudge it back anytime."));
-  Serial.println(F("WRITE DOWN the PWM where each wheel FIRST moves."));
-  Serial.println(F("any key = abort"));
-  for (int p = 40; p <= 110; p += 5) {
-    Serial.print(F("PWM = ")); Serial.println(p);
-    digitalWrite(PIN_LED, HIGH);
-    motor(true, p, false); motor(false, p, false);
-    delay(400);
-    stopAll();
-    digitalWrite(PIN_LED, LOW);
-    delay(700);
-    if (abortKey()) { Serial.println(F("(aborted)")); break; }
+  Serial.println(F("\n-- 2: DEADBAND. Robot ON THE FLOOR next to the laptop,"));
+  Serial.println(F("battery switch ON. Nudge the robot back between pulses."));
+  Serial.println(F("r = BREAKAWAY ramp: PWM 90..200, 0.5 s pulses."));
+  Serial.println(F("    WRITE DOWN the PWM where the robot FIRST moves"));
+  Serial.println(F("    (and whether one side clearly moved before the other)."));
+  Serial.println(F("k = KICK test: 0.09 s full-power kick, then HOLD a lower"));
+  Serial.println(F("    PWM for 1 s. Steps DOWN from 150 to 60. WRITE DOWN the"));
+  Serial.println(F("    lowest hold PWM where it KEPT rolling after the kick"));
+  Serial.println(F("    (instead of stopping dead the moment the kick ends)."));
+  Serial.println(F("s = back to menu. Any key during a run = abort."));
+  for (;;) {
+    int c = readKey();
+    if (c == 'r') {
+      for (int p = 90; p <= 200; p += 5) {
+        Serial.print(F("PWM = ")); Serial.println(p);
+        digitalWrite(PIN_LED, HIGH);
+        motor(true, p, false); motor(false, p, false);
+        delay(500);
+        stopAll();
+        digitalWrite(PIN_LED, LOW);
+        delay(700);
+        if (abortKey()) { Serial.println(F("(aborted)")); break; }
+      }
+      stopAll();
+      Serial.println(F("ramp done. Report: FIRST moved at PWM ___ (which side first?)"));
+    } else if (c == 'k') {
+      Serial.println(F("each step: short LUNGE then slow hold - that's intended"));
+      for (int p = 150; p >= 60; p -= 10) {
+        Serial.print(F("kick, then hold PWM = ")); Serial.println(p);
+        digitalWrite(PIN_LED, HIGH);
+        motor(true, 255, false); motor(false, 255, false);
+        delay(90);
+        motor(true, p, false); motor(false, p, false);
+        delay(1000);
+        stopAll();
+        digitalWrite(PIN_LED, LOW);
+        delay(900);
+        if (abortKey()) { Serial.println(F("(aborted)")); break; }
+      }
+      stopAll();
+      Serial.println(F("kick ramp done. Report: kept rolling down to PWM ___"));
+    } else if (c == 's') break;
   }
-  stopAll();
-  Serial.println(F("done. Report: LEFT first moved at ___, RIGHT at ___"));
 }
 
 void t3_trim() {

@@ -77,7 +77,7 @@ silent at the menu; test 1 then verifies each motor properly.
 | # | Test | Robot placement | You report |
 |---|---|---|---|
 | 1 | Motor direction | on a box, wheels free | did each wheel spin forward? |
-| 2 | Deadband | on the floor, next to the laptop | PWM at which each wheel first moves |
+| 2 | Deadband | on the floor, next to the laptop | `r`: PWM where the robot first breaks away (90–200 ramp); `k`: lowest hold PWM that keeps rolling after a full-power kick |
 | 3 | Straight trim | 2 m clear floor | final TRIM_R after a/d tuning |
 | 4 | Pivot timing | open floor, mark heading | final L/R ms; ×4-pivot error in degrees |
 | 5 | Sensor stats | centred in a corridor, square | full printout + ruler distance of each wheel to its wall |
@@ -85,6 +85,16 @@ silent at the menu; test 1 then verifies each motor properly.
 | 7 | Live stream | hand-held sweep | note anything weird (a sensor reading a wire, etc.) |
 | 8 | Cruise speed | 2 m, a marked metre | seconds to cross the metre |
 | 9 | Saved values | anywhere | (shows/reset the EEPROM-saved numbers) |
+
+Note on test 2 (updated 2026-08-20): the first session showed the robot
+does not move at all on the floor below PWM 110 even though free wheels
+spin at 140 — normal physics (a loaded 410 g robot through an L298N needs
+far more PWM to break static friction than a free-spinning wheel). The
+test now ramps 90→200 (`r`) and adds a kick test (`k`): a 90 ms
+full-power kick followed by a lower hold PWM. Running friction is lower
+than static friction, so the lowest hold PWM that keeps the robot rolling
+after a kick is the true usable floor — the race firmware starts every
+move with the same kind of kick.
 
 Tips for test 4 (the most important one): use the `e` (right) / `q`
 (left) keys — four pivots in a row should bring the robot back exactly
