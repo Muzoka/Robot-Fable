@@ -219,11 +219,20 @@ the classic source of phantom 3 cm readings.
   the #1 race-reliability item: find, fix, hot-glue, then re-run test 3
   twice back-to-back and require agreement within ±2 counts.**
 - ⏳ **Test 4 (pivot timing @ PWM_TURN 200), in progress:** right pivot
-  tuned to **TURN_MS_R = 250 ms** (~90° by eye, tuned down from 680).
-  LEFT still at the 680 default — must come down to ~250 before any left
-  pivot is run. ×4-accuracy verification pending for both directions;
-  fresh- vs tired-battery repeat pending. Final TURN90 constants for the
-  race firmware wait on that.
+  first tuned to **250 ms** early in the session; by session end (pack
+  visibly drained) the tuned values were **TURN_MS_L = 320,
+  TURN_MS_R ≈ 290–300**. The right value growing 250→~300 (+20 %) across
+  the session is battery sag lengthening timed turns — the predicted
+  effect, and why the FINAL numbers must be taken fresh-charged. Left
+  needing ~20–30 ms more than right is consistent with the weaker left
+  channel. ×4-accuracy residuals not yet reported for either side.
+- **Endgame plan:** full recharge of the 3800 pair → wiggle test (`w`)
+  until the left-channel fault is found and glued → test 3 twice
+  back-to-back (trim must repeat within ±2) → test 4 ×4 runs both sides
+  (report residual degrees) → test 8 metre timing → test 6 brake. Those
+  fresh-charge numbers become the race constants; today's tired-end
+  numbers (L 320 / R ~300, TRIM −13) bound the drift the firmware must
+  absorb mid-session.
 
 ## Team-reported field observations
 
