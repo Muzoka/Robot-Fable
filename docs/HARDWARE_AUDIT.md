@@ -203,6 +203,16 @@ the classic source of phantom 3 cm readings.
   right−left = **+2.4 mm** (supersedes the earlier hand-measured ~8.5 mm).
   Firmware targets updated: TARGET_L 85.0, TARGET_R 87.5, SIDE_SUM 172.5
   (offsets applied to the real track's 74 mm centred clearance).
+- ✅ **Test 3 (straight trim @ cruise 180): TRIM_R = 0** — one `a` press
+  from the old value of 1, then drives straight. The motors are
+  essentially matched at cruise PWM; the old full-power drift does not
+  appear at 180.
+- ⏳ **Test 4 (pivot timing @ PWM_TURN 200), in progress:** right pivot
+  tuned to **TURN_MS_R = 250 ms** (~90° by eye, tuned down from 680).
+  LEFT still at the 680 default — must come down to ~250 before any left
+  pivot is run. ×4-accuracy verification pending for both directions;
+  fresh- vs tired-battery repeat pending. Final TURN90 constants for the
+  race firmware wait on that.
 
 ## Team-reported field observations
 
