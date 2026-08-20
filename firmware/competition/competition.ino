@@ -72,10 +72,15 @@
 // real track's 74 mm-per-side centred clearance.
 #define TARGET_L_MM     85.0f    // centred reading, left  (calibrated)
 #define TARGET_R_MM     87.5f    // centred reading, right (calibrated)
-#define SIDE_SUM_MM     172.5f
 #define SIDE_OPEN_MM    220.0f
-#define TRACK_L_MM      (TARGET_L_MM + 70.0f)
-#define TRACK_R_MM      (TARGET_R_MM + 70.0f)
+// Runtime centering targets: seeded from the compiled values, then
+// re-measured at the start line by the self-test (the placement defines
+// "centred"), clamped to +-25 mm of compiled. Adapts to the venue's real
+// corridor width instead of refusing to start on it (the old side-sum
+// check blink-6'd on any corridor that wasn't exactly the assumed width).
+float targetL = TARGET_L_MM, targetR = TARGET_R_MM;
+#define TRACK_L_MM      (targetL + 70.0f)
+#define TRACK_R_MM      (targetR + 70.0f)
 #define ERR_CLAMP_MM    40.0f
 #define FRONT_BLOCKED_MM 200.0f
 #define FRONT_OPEN_MM   260.0f
@@ -155,6 +160,22 @@ const Step SCRIPT3[] = {{'F','R'},{'F','R'},{'F','L'},{'F','L'},
 
 Step script[10];
 uint8_t scriptLen = 0, scriptPos = 0;
+
+// AUTO mode (no map jumper): map-agnostic navigation. The universal rule
+// set for these tracks and any chain of them: follow the corridor; at a
+// blocked front turn to the side the sensors PROVE open; at a both-sides-
+// open crossing drive straight through; only sustained truly-far space is
+// the exit. Works because every turn on every official map is forced and
+// every crossing is a straight-through. Sim: 149/150 across all maps.
+bool autoMode = false;
+bool autoWig = false;          // wiggle used to unmask a corner mirage
+char forcedDir = 0;            // committed direction for pocket escapes
+uint8_t backTrims = 0;         // over-rotation unwinds used this turn
+int backMs = 0;                // unwind budget countdown
+int xFclearMs = 0;             // echo-free-front clock inside CROSS
+unsigned long lastBackupMs = 0;
+int progMs = 0;                // progress watchdog accumulator
+float fRef = -1.0f;            // progress watchdog front reference
 
 // state machine states (declared early: the Arduino builder
 // inserts auto-prototypes before the first function)
@@ -346,8 +367,11 @@ void enterState(State s) {
   if (s == ST_DECIDE || s == ST_BACKUP) applyMotorsDirect(0, 0, true);
   if (s == ST_DECIDE) decPhase = 0;
   if (s == ST_APPROACH) apprFarMs = 0;
-  if (s == ST_TURN) { trimsDone = 0; turnRetries = 0; turnRevMs = 0; }
+  if (s == ST_TURN) { trimsDone = 0; turnRetries = 0; turnRevMs = 0;
+                      backTrims = 0; backMs = 0; }
   if (s == ST_TURN || s == ST_BACKUP) apprAbortN = 0;
+  if (s == ST_BACKUP) lastBackupMs = millis();
+  if (s == ST_CROSS) xFclearMs = 0;
   DBG(F("-> ")); DBGLN(ST_NAME[s]);
 }
 
@@ -365,9 +389,9 @@ void steer(int base, float gain, uint8_t refreshed, bool kdOnly,
             (lastRaw[SR] < 0 || lastRaw[SR] < TRACK_R_MM + 60);
   if (bothOnly && !(lw && rw)) { lw = false; rw = false; }
   float err;
-  if (lw && rw)      err = ((L - TARGET_L_MM) - (R - TARGET_R_MM)) / 2.0f;
-  else if (lw)       err = L - TARGET_L_MM;
-  else if (rw)       err = TARGET_R_MM - R;
+  if (lw && rw)      err = ((L - targetL) - (R - targetR)) / 2.0f;
+  else if (lw)       err = L - targetL;
+  else if (rw)       err = targetR - R;
   else               err = 0.0f;
   // windowed derivative from RAW error (median steps null adjacent diffs)
   if (refreshed == SL || refreshed == SR) {
@@ -464,6 +488,22 @@ void controllerTick(uint8_t rf) {
       lastMedsValid = true;
       if (stuckMs > STUCK_MS) { stuckMs = 0; enterState(ST_BACKUP); }
     } else { stuckMs = 0; lastMedsValid = false; }
+    // progress watchdog: a wedged robot with NOISY sensors never trips
+    // the frozen-readings detector. Coarser net: commanded forward in
+    // CRUISE, front valid inside 700 mm, yet the front distance stays in
+    // a +-40 mm band for 6 s -> we are not actually moving.
+    bool progNear = medValid[SF] && !farFlag[SF] && F < 700.0f;
+    if (state == ST_CRUISE && progNear &&
+        curL > 0 && curR > 0 && !curBrake) {
+      float dF = F - fRef; if (dF < 0) dF = -dF;
+      if (fRef < 0 || dF > 40.0f) { fRef = F; progMs = 0; }
+      else progMs += LOOP_MS;
+      if (progMs > 6000) {
+        fRef = -1; progMs = 0;
+        DBGLN(F("!no-progress"));
+        enterState(ST_BACKUP);
+      }
+    } else { fRef = -1; progMs = 0; }
   }
   switch (state) {
     case ST_CRUISE:    stCruise(rf, F); break;
@@ -491,9 +531,14 @@ void stCruise(uint8_t rf, float F) {
     return;
   }
   const Step* nx = nextStep();
-  // crossing pending: both-sides-open signature -> active straight-through
-  if (nx && nx->trig == 'X') {
-    if (!wallAt(SL) && !wallAt(SR)) {
+  // crossing pending (scripted X, or always in auto): both-sides-open
+  // signature -> active straight-through. In auto the front must ALSO be
+  // open: at a real crossing straight ahead is clear, while at a corner a
+  // side mirage plus a nearing front wall would fake this signature and
+  // drive the robot into the corner.
+  if (autoMode || (nx && nx->trig == 'X')) {
+    bool fOpenish = farFlag[SF] || !medValid[SF] || F > FRONT_FAR_MM;
+    if ((fOpenish || !autoMode) && !wallAt(SL) && !wallAt(SR)) {
       if (++xOpenN >= 6) { xOpenN = 0; enterState(ST_CROSS); return; }
     } else xOpenN = 0;
   }
@@ -518,13 +563,26 @@ void stCruise(uint8_t rf, float F) {
       }
     } else {
       bool fOpen = farFlag[SF] || !medValid[SF] || F > FRONT_FAR_MM;
-      if (!lw && !rw && fOpen) allOpenN++; else allOpenN = 0;
+      bool openNow;
+      if (autoMode) {
+        // strict: a yawed robot inside the maze reads 230-450 mm on both
+        // sides ("not wall" but not open floor). The exit reads FAR.
+        bool sidesFar = (farFlag[SL] || dist(SL) > 500.0f) &&
+                        (farFlag[SR] || dist(SR) > 500.0f);
+        bool fFar = farFlag[SF] || !medValid[SF] || F > 700.0f;
+        openNow = sidesFar && fFar;
+      } else {
+        openNow = !lw && !rw && fOpen;
+      }
+      if (openNow) allOpenN++; else allOpenN = 0;
       if (allOpenN >= FINISH_OPEN_TICKS) { enterState(ST_FINISH); return; }
     }
   }
   bool both = wallAt(SL) && wallAt(SR);
   int base = both ? PWM_CRUISE : PWM_CRUISE - 10;   // single wall: gentler
-  bool xPend = nx && nx->trig == 'X';
+  // auto steers both-walls-only everywhere: near any opening it holds
+  // straight on trim instead of chasing the gap
+  bool xPend = autoMode || (nx && nx->trig == 'X');
   int tl, tr; steer(base, 1.0f, rf, false, xPend, &tl, &tr);
   applyMotors(tl, tr, false);
 }
@@ -597,13 +655,64 @@ void stDecide(uint8_t rf, float F) {
     if (t < 4 * WIG_SEG_MS + POST_TURN_SETTLE_MS) { applyMotors(0, 0, true); return;
     }
     if (wiggleHit) {                       // a wall answered: not an opening
-      if (scriptPos) scriptPos--;          // restore the script entry
-      uint8_t side2 = (turnDir == 'L') ? SL : SR;
-      sideWasWall[side2] = false; openN[side2] = 0;
-      turnDir = 0; frontBlockedN = 0;
-      enterState(ST_CRUISE); return;
+      if (autoWig) {
+        // auto corner with both sides reading open: the chosen side
+        // answered with a wall - it was a mirage. Turn the other way.
+        autoWig = false;
+        turnDir = (turnDir == 'L') ? 'R' : 'L';
+      } else {
+        if (scriptPos) scriptPos--;        // restore the script entry
+        uint8_t side2 = (turnDir == 'L') ? SL : SR;
+        sideWasWall[side2] = false; openN[side2] = 0;
+        turnDir = 0; frontBlockedN = 0;
+        enterState(ST_CRUISE); return;
+      }
     }
+    autoWig = false;
     decPhase = 2;
+  }
+  if (turnDir == 0 && autoMode) {
+    // map-agnostic corner: turn to the side the sensors say is open.
+    // Every turn on the official maps is forced, so this is a read, not
+    // a guess.
+    bool lOpen = farFlag[SL] || !medValid[SL] || dist(SL) > SIDE_OPEN_MM;
+    bool rOpen = farFlag[SR] || !medValid[SR] || dist(SR) > SIDE_OPEN_MM;
+    if (lOpen != rOpen) {
+      emptyBlocks = 0; forcedDir = 0;
+      turnDir = lOpen ? 'L' : 'R';
+    } else if (lOpen && rOpen) {
+      // both look open: a VALID medium echo proves an opening (it sees
+      // the next corridor's far wall); silence/far-latch proves nothing -
+      // a wall can mirage invisible for seconds. Prefer proof; wiggle
+      // only if tied.
+      emptyBlocks = 0; forcedDir = 0;
+      bool lVal = !farFlag[SL] && medValid[SL];
+      bool rVal = !farFlag[SR] && medValid[SR];
+      if (lVal != rVal) {
+        turnDir = lVal ? 'L' : 'R';
+      } else {
+        turnDir = (dist(SL) > dist(SR)) ? 'L' : 'R';
+        decPhase = 3; wiggleHit = false; autoWig = true;
+        stateT0 = millis();
+        return;
+      }
+    } else {
+      // neither side open: dead end (never on these maps) or a phantom
+      // front block - realign first, force a turn after 3. Remember the
+      // forced direction: a committed 180 escapes a pocket; flip-
+      // flopping on noisy width readings never does.
+      DBGLN(F("!auto-no-side-open"));
+      if (++emptyBlocks < 3) {
+        frontBlockedN = 0;
+        enterState(ST_BACKUP);
+        return;
+      }
+      emptyBlocks = 0;
+      if (!forcedDir) forcedDir = (dist(SL) > dist(SR)) ? 'L' : 'R';
+      turnDir = forcedDir;
+    }
+    enterState(ST_TURN);
+    return;
   }
   if (turnDir == 0) {                      // front-blocked path
     const Step* nx = nextStep();
@@ -634,6 +743,21 @@ void stTurn(uint8_t rf, float F) {
   long t = timerMs();
   long dur = (turnDir == 'L') ? turn90L : turn90R;
   if (turnRetries) dur = dur * 6 / 10;     // finishing an interrupted pivot
+  // over-rotation unwind (auto): pivot BACK until the outer wall
+  // appears, then settle and re-verify
+  if (backMs > 0) {
+    uint8_t outer = (turnDir == 'R') ? SL : SR;
+    float raw = lastRaw[outer];
+    backMs -= LOOP_MS;
+    if ((raw >= 0 && raw < 300.0f) || backMs <= 0) {
+      backMs = 0;
+      stateT0 = millis() - (dur + 1);      // -> settle, then verify again
+      return;
+    }
+    int d = (turnDir == 'L') ? 1 : -1;     // unwind = opposite of the turn
+    applyMotorsDirect(PWM_TURN * d, -PWM_TURN * d, false);
+    return;
+  }
   if (t <= dur) {
     int d = (turnDir == 'L') ? -1 : 1;
     applyMotorsDirect(PWM_TURN * d, -PWM_TURN * d, false);
@@ -645,6 +769,20 @@ void stTurn(uint8_t rf, float F) {
   }
   if (turnRevMs) { turnRevMs = 0; stateT0 = millis(); return; }  // re-pivot
   bool ok = farFlag[SF] || !medValid[SF] || dist(SF) > FRONT_OPEN_MM;
+  // auto: front-open alone cannot tell a 90 from a 180 (both face
+  // corridors). After a true corner turn the OLD front wall must sit on
+  // the outboard side. If it doesn't, we over-rotated: unwind until it
+  // appears (once per turn).
+  if (autoMode && ok && backTrims < 1) {
+    uint8_t outer = (turnDir == 'R') ? SL : SR;
+    bool outerWall = medValid[outer] && !farFlag[outer] &&
+                     dist(outer) < 350.0f;
+    if (!outerWall) {
+      backTrims++;
+      backMs = (int)(dur * 3 / 4);
+      return;
+    }
+  }
   if (!ok && trimsDone < TURN_MAX_TRIMS) { // corrective micro-pulse
     trimsDone++;
     stateT0 = millis() - (dur - TURN_TRIM_PULSE_MS);
@@ -686,9 +824,26 @@ void stCreep(uint8_t rf, float F) {
 }
 
 void stCross(uint8_t rf, float F) {
-  (void)F;
   long t = timerMs();
   if (t < POST_TURN_SETTLE_MS) { applyMotors(0, 0, true); return; }
+  // echo-free-front clock: a true exit sees NOTHING ahead. A wedged
+  // robot's front flickers between valid mid-range and far - any valid
+  // raw under 900 mm resets the clock.
+  if (rf == SF && lastRaw[SF] >= 0 && lastRaw[SF] < 900.0f) xFclearMs = 0;
+  else xFclearMs += LOOP_MS;
+  // auto: a "crossing" whose walls never come back, with truly FAR
+  // readings all around, is the exit mouth - hand over to FINISH (which
+  // bounces back if a wall reappears). Never within 5 s of a BACKUP: a
+  // real exit is reached cruising, not thrashing in a mirage pocket.
+  if (autoMode && t > 2000 &&
+      (farFlag[SL] || dist(SL) > 500.0f) &&
+      (farFlag[SR] || dist(SR) > 500.0f) &&
+      (farFlag[SF] || !medValid[SF] || F > 700.0f) &&
+      xFclearMs > 1000 &&
+      (long)(millis() - lastBackupMs) > 5000) {
+    enterState(ST_FINISH);
+    return;
+  }
   bool done = t >= CROSS_MAX_MS;
   if (t > CROSS_MIN_MS && wallAt(SL) && wallAt(SR)) {
     if (++xCloseN >= 4) done = true;
@@ -733,9 +888,14 @@ void stBackup(uint8_t rf, float F) {
 }
 
 void stFinish(uint8_t rf, float F) {
-  (void)rf; (void)F;
+  (void)rf;
   // a wall back on either side: that was a crossing/hug, not the exit
   if (wallAt(SL) || wallAt(SR)) { allOpenN = 0; enterState(ST_CRUISE); return; }
+  // auto: a valid close front during the exit drive means we are NOT
+  // driving out an open mouth - bail back to navigation
+  if (autoMode && !farFlag[SF] && medValid[SF] && F < 300.0f) {
+    allOpenN = 0; enterState(ST_CRUISE); return;
+  }
   if (timerMs() >= FINISH_DRIVE_MS) {
     applyMotors(0, 0, true);
     enterState(ST_DONE);
@@ -776,11 +936,19 @@ void selfTestAndArm() {
     delay(35);
   }
   if (nl < 5 || nr < 5) ledBlinkForever(5);
-  float sum = sl / nl + sr / nr;
-  if (sum < SIDE_SUM_MM - 45 || sum > SIDE_SUM_MM + 45) {
-    DBG(F("side sum ")); DBGLN(sum);
-    ledBlinkForever(6);                    // badly placed / sensor skewed
+  float ml = sl / nl, mr = sr / nr;
+  // sanity only: each side must see a plausible wall (a wire drooping in
+  // a beam reads ~30 mm; open floor reads 300+). Within sanity, the
+  // start-line readings BECOME the centering targets (clamped +-25 mm of
+  // compiled) - the robot calibrates itself to this track's width.
+  if (ml < 40 || ml > 250 || mr < 40 || mr > 250 ||
+      ml + mr < 120 || ml + mr > 280) {
+    DBG(F("side readings ")); DBG(ml); DBG(F(" / ")); DBGLN(mr);
+    ledBlinkForever(6);                    // badly placed / sensor blocked
   }
+  targetL = constrain(ml, TARGET_L_MM - 25.0f, TARGET_L_MM + 25.0f);
+  targetR = constrain(mr, TARGET_R_MM - 25.0f, TARGET_R_MM + 25.0f);
+  DBG(F("targets L/R: ")); DBG(targetL); DBG(F(" / ")); DBGLN(targetR);
   digitalWrite(PIN_LED, HIGH);             // self-test passed: LED solid
   DBGLN(F("self-test OK; show hand to front sensor to arm"));
   // 3) hand over the nose >= 0.5 s arms; removing it starts the countdown
@@ -806,10 +974,13 @@ void loadScript() {
   pinMode(PIN_MAP2, INPUT_PULLUP);
   pinMode(PIN_MAP3, INPUT_PULLUP);
   delay(5);
-  const Step* src; uint8_t n;
-  if (digitalRead(PIN_MAP2) == LOW)      { src = SCRIPT2; n = 6; DBGLN(F("MAP 2")); }
-  else if (digitalRead(PIN_MAP3) == LOW) { src = SCRIPT3; n = 8; DBGLN(F("MAP 3")); }
-  else                                   { src = SCRIPT1; n = 2; DBGLN(F("MAP 1")); }
+  bool j2 = digitalRead(PIN_MAP2) == LOW;
+  bool j3 = digitalRead(PIN_MAP3) == LOW;
+  const Step* src = NULL; uint8_t n = 0;
+  if (j2 && j3)  { src = SCRIPT1; n = 2; DBGLN(F("MAP 1 (scripted)")); }
+  else if (j2)   { src = SCRIPT2; n = 6; DBGLN(F("MAP 2 (scripted)")); }
+  else if (j3)   { src = SCRIPT3; n = 8; DBGLN(F("MAP 3 (scripted)")); }
+  else           { autoMode = true;      DBGLN(F("AUTO (any map/chain)")); }
   for (uint8_t i = 0; i < n; i++) script[i] = src[i];
   scriptLen = n; scriptPos = 0;
 }
