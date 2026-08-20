@@ -181,6 +181,20 @@ the classic source of phantom 3 cm readings.
     real mismatch at the new cruise PWM 180.
   - Calibration sketch constants raised: PWM_CRUISE 110→**180**,
     PWM_TURN 120→**200** (pending confirmation by tests 3/4/8).
+  - **Second run (after a left-channel dropout):** during the first
+    190→110 kick test the LEFT wheel did not move at all — even at the
+    255 kick — while RIGHT sustained down to ~110. After the team checked
+    the left wiring it recovered fully. ⚠ Cause not identified: if no
+    specific loose wire was found, treat the left motor circuit as having
+    an intermittent connection until proven otherwise (wiggle-test before
+    race day, hot-glue every left-channel connector: OUT1/OUT2 screws,
+    D4/D7/D5 jumpers, motor solder tabs).
+  - **Consolidated deadband numbers (floor, this battery charge):**
+    breakaway L ≈ 125–140, R ≈ 115–125 (run-to-run spread ~10–15 PWM —
+    battery drain + friction variance, expected); kick-sustain: left kept
+    rolling until the ~110 hold, right until ~120. Working floor for the
+    race firmware: sustain ≈ 130 worst-case, static breakaway ≈ 140
+    worst-case → PWM_FLOOR ~150, CRUISE 180, SLOW ~160, TURN 200.
 
 ## Team-reported field observations
 
