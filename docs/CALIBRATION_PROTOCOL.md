@@ -48,12 +48,14 @@ The sketch is designed so you NEVER walk with the laptop:
 | 6 | Brake distance | 2 m clear floor | brake vs coast stop distance (cm) |
 | 7 | Live stream | hand-held sweep | note anything weird (a sensor reading a wire, etc.) |
 | 8 | Cruise speed | 2 m, a marked metre | seconds to cross the metre |
+| 9 | Saved values | anywhere | (shows/reset the EEPROM-saved numbers) |
 
-Tips for test 4 (the most important one): use the `x` / `y` keys — four
-pivots in a row should bring the robot back exactly to its starting
-heading; whatever angle it is off by, divide by 4 and tell me the number
-and direction. Tune until the ×4 error is under ~10° total, for LEFT and
-RIGHT separately.
+Tips for test 4 (the most important one): use the `e` (right) / `q`
+(left) keys — four pivots in a row should bring the robot back exactly
+to its starting heading; whatever angle it is off by, divide by 4 and
+tell me the number and direction. Adjust with `d`/`c` (right ±10 ms) and
+`a`/`z` (left ±10 ms) — saved instantly — and rerun until the ×4 error
+is under ~10° total, for LEFT and RIGHT separately.
 
 Repeat tests 3 and 4 once more after the battery has done ~10 minutes of
 driving — I want both the fresh-charge and the settled-charge numbers.
