@@ -165,10 +165,28 @@ void menu() {
   Serial.println(F("5 sensor stats              6 brake distance (UNPLUG)"));
   Serial.println(F("7 live stream               8 cruise run (UNPLUG)"));
   Serial.println(F("9 show/reset saved values"));
+  Serial.println(F("w wiggle test - find loose left-motor wire (box)"));
   Serial.print(F("saved: TRIM_R=")); Serial.print(TRIM_R);
   Serial.print(F("  TURN_MS_L=")); Serial.print(TURN_MS_L);
   Serial.print(F("  TURN_MS_R=")); Serial.println(TURN_MS_R);
   Serial.println(F("choose> "));
+}
+
+void tw_wiggle() {
+  Serial.println(F("\n-- W: WIGGLE TEST. Robot on the box, wheels FREE."));
+  Serial.println(F("Both motors run at cruise for 20 s. While they run,"));
+  Serial.println(F("gently wiggle each LEFT-channel wire ONE AT A TIME:"));
+  Serial.println(F("OUT1/OUT2 screw terminals, D4, D7, D5 (both ends),"));
+  Serial.println(F("then press lightly on the left motor's two solder tabs."));
+  Serial.println(F("Any stutter, speed change or stop = that is the fault."));
+  Serial.println(F("any key = stop early"));
+  motor(true, PWM_CRUISE, false); motor(false, PWM_CRUISE + TRIM_R, false);
+  for (int i = 0; i < 200; i++) {
+    delay(100);
+    if (abortKey()) break;
+  }
+  stopAll();
+  Serial.println(F("done. Which wire (if any) caused a stutter?"));
 }
 
 void t0_enable() {
@@ -427,6 +445,7 @@ void loop() {
     case '0': t0_enable(); break;
     case '1': t1_direction(); break;
     case '2': t2_deadband(); break;
+    case 'w': case 'W': tw_wiggle(); break;
     case '3': t3_trim(); break;
     case '4': t4_pivot(); break;
     case '5': t5_stats(); break;

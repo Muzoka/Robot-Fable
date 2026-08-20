@@ -207,6 +207,17 @@ the classic source of phantom 3 cm readings.
   from the old value of 1, then drives straight. The motors are
   essentially matched at cruise PWM; the old full-power drift does not
   appear at 180.
+- ⚠ **Test 3 REDONE later in the session: TRIM_R = −13** (robot veered
+  LEFT until the right motor was slowed 13 counts). A 13-count trim swing
+  within one session is not battery sag. Combined with (a) the left
+  breakaway rising 125→140 and (b) the left wheel's total dropout that
+  recovered on handling, the consistent story is an **intermittent
+  high-resistance connection in the left motor circuit** (OUT1/OUT2
+  screws, D4/D7/D5 jumpers, or the motor's solder tabs — TT-motor tabs
+  crack classically). Added menu test `w` (wiggle test: both motors at
+  cruise 20 s, wheels free) to catch the culprit in the act. **This is
+  the #1 race-reliability item: find, fix, hot-glue, then re-run test 3
+  twice back-to-back and require agreement within ±2 counts.**
 - ⏳ **Test 4 (pivot timing @ PWM_TURN 200), in progress:** right pivot
   tuned to **TURN_MS_R = 250 ms** (~90° by eye, tuned down from 680).
   LEFT still at the 680 default — must come down to ~250 before any left
