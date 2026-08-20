@@ -31,6 +31,8 @@
  *   countdown (LED fast blink), then the run starts.
  */
 
+#include <EEPROM.h>
+
 // ================= DEBUG =================
 #define DEBUG 1              // 1: serial telemetry. 0 for race day.
 #if DEBUG
@@ -92,13 +94,17 @@
 #define FINISH_OPEN_TICKS 35
 #define FINISH_ARM_N    10
 
-#define PWM_FLOOR       60       // CAL (calibration test 2)
-#define PWM_CRUISE      110
-#define PWM_SLOW        95
-#define PWM_TURN        120
-#define PWM_BACK        95
-#define TRIM_R_PWM      1        // CAL (test 3): counters rightward drift
+// Calibration test 2 (2026-08-20, on floor): static breakaway L 125-140 /
+// R 115-125; kick-sustain floor ~110-130. All speeds sit above the worst
+// wheel with margin; a kick-start pulse (KICK_MS below) guarantees
+// breakaway from standstill.
+#define PWM_FLOOR       150      // CAL: never command the dead zone
+#define PWM_CRUISE      180      // CAL: verified driving in tests 3/8
+#define PWM_SLOW        160
+#define PWM_TURN        200      // CAL: verified pivoting in test 4
+#define PWM_BACK        170
 #define PWM_SLEW        10
+#define KICK_MS         70       // full-power pulse when starting straight
 
 #define KP_WALL         0.22f
 #define KD_WALL         0.20f
@@ -108,9 +114,16 @@
 #define ERR_DEADBAND_MM 10.0f
 
 #define LOOP_MS         20
-#define TURN90_MS_L     680      // CAL (test 4) at race charge
-#define TURN90_MS_R     680      // CAL
-#define TURN_TRIM_PULSE_MS 70
+// TURN90 times and straight trim live in EEPROM, written by the
+// calibration sketch (tests 3/4) - same struct, same address. Re-running
+// those two tests on race morning (fresh pack, venue floor) updates the
+// race build without re-uploading. Defaults below = fresh-charge
+// estimates, used only if EEPROM is empty or implausible.
+#define TURN90_L_DEFAULT 270     // CAL test 4 (tired pack read 320)
+#define TURN90_R_DEFAULT 250     // CAL test 4 (tired pack read 290-300)
+#define TRIM_R_DEFAULT   0       // CAL test 3 (fresh 0; tired drifted -13)
+#define TURN_TRIM_PULSE_MS 45    // ~10-15 deg nudge at PWM_TURN 200
+#define WIG_SEG_MS      60       // wiggle-check segment (was 120 @ 680ms turns)
 #define TURN_MAX_TRIMS  2
 #define TURN_REV_MS     450
 #define SETTLE_MS       250
@@ -152,6 +165,30 @@ enum State { ST_SELFTEST, ST_ARM, ST_COUNTDOWN,
 const char* const ST_NAME[] = {"SELFTEST","ARM","COUNTDOWN","CRUISE",
   "APPROACH","DECIDE","TURN","SQUARE","REACQUIRE","CREEP","CROSS",
   "BACKUP","FINISH","DONE"};
+
+// ============ CALIBRATED TUNABLES (EEPROM, shared w/ calibration.ino) ===
+#define EE_MAGIC 0x5246          // 'RF' - must match calibration.ino
+struct Persist { uint16_t magic; int16_t trim, turnL, turnR; };
+
+int16_t trimR   = TRIM_R_DEFAULT;
+int16_t turn90L = TURN90_L_DEFAULT;
+int16_t turn90R = TURN90_R_DEFAULT;
+
+void loadCal() {
+  Persist p; EEPROM.get(0, p);
+  if (p.magic == EE_MAGIC &&
+      p.turnL >= 150 && p.turnL <= 500 &&
+      p.turnR >= 150 && p.turnR <= 500 &&
+      p.trim  >= -40 && p.trim  <= 40) {
+    trimR = p.trim; turn90L = p.turnL; turn90R = p.turnR;
+    DBGLN(F("cal: EEPROM"));
+  } else {
+    DBGLN(F("cal: DEFAULTS (EEPROM empty/implausible)"));
+  }
+  DBG(F("trimR="));   DBG(trimR);
+  DBG(F(" turnL=")); DBG(turn90L);
+  DBG(F(" turnR=")); DBGLN(turn90R);
+}
 
 // ================= SONAR =================
 enum SonarId { SF = 0, SL = 1, SR = 2 };
@@ -237,11 +274,35 @@ void writeMotor(bool leftSide, int pwm, bool brake) {
   analogWrite(en, mag);
 }
 
+// Kick-start (calibration test 2k): from standstill the loaded robot
+// needs PWM >= ~140 to break static friction, but keeps rolling far
+// lower once moving. A short full-power pulse on every stop->straight
+// transition guarantees breakaway. Pivots are excluded: turn times were
+// calibrated WITHOUT a kick and must keep identical dynamics.
+unsigned long kickUntil = 0;
+bool wasStopped = true;
+
+void writePair(int l, int r, bool brake) {
+  if (brake || (l == 0 && r == 0)) {
+    wasStopped = true; kickUntil = 0;
+    writeMotor(true, l, brake); writeMotor(false, r, brake);
+    return;
+  }
+  bool straight = (l > 0 && r > 0) || (l < 0 && r < 0);
+  if (wasStopped && straight) kickUntil = millis() + KICK_MS;
+  wasStopped = false;
+  if (straight && (long)(kickUntil - millis()) > 0) {
+    writeMotor(true,  l > 0 ? 255 : -255, false);
+    writeMotor(false, r > 0 ? 255 : -255, false);
+  } else {
+    writeMotor(true, l, false); writeMotor(false, r, false);
+  }
+}
+
 void applyMotorsDirect(int tl, int tr, bool brake) {  // no slew: pivots
   curL = brake ? 0 : tl;
   curR = brake ? 0 : tr;
-  writeMotor(true,  curL, brake);
-  writeMotor(false, curR, brake);
+  writePair(curL, curR, brake);
 }
 
 void applyMotors(int tl, int tr, bool brake) {   // slew-limited
@@ -249,8 +310,7 @@ void applyMotors(int tl, int tr, bool brake) {   // slew-limited
   int dr = tr - curR; if (dr > PWM_SLEW) dr = PWM_SLEW; if (dr < -PWM_SLEW) dr = -PWM_SLEW;
   curL += dl; curR += dr;
   if (brake) { curL = 0; curR = 0; }
-  writeMotor(true,  curL, brake);
-  writeMotor(false, curR, brake);
+  writePair(curL, curR, brake);
 }
 
 // ================= CONTROLLER STATE =================
@@ -332,7 +392,7 @@ void steer(int base, float gain, uint8_t refreshed, bool kdOnly,
   if (s < -STEER_LIMIT) s = -STEER_LIMIT;
   // err > 0: robot right of centre -> steer left -> right wheel faster
   *tl = base - (int)s;
-  *tr = base + (int)s + TRIM_R_PWM;
+  *tr = base + (int)s + trimR;
 }
 
 void resetSteering() { errPrev = 0; errHistN = 0; deriv = 0; }
@@ -463,7 +523,7 @@ void stCruise(uint8_t rf, float F) {
     }
   }
   bool both = wallAt(SL) && wallAt(SR);
-  int base = both ? PWM_CRUISE : PWM_SLOW + 20;
+  int base = both ? PWM_CRUISE : PWM_CRUISE - 10;   // single wall: gentler
   bool xPend = nx && nx->trig == 'X';
   int tl, tr; steer(base, 1.0f, rf, false, xPend, &tl, &tr);
   applyMotors(tl, tr, false);
@@ -528,13 +588,13 @@ void stDecide(uint8_t rf, float F) {
     uint8_t side = (turnDir == 'L') ? SL : SR;
     float raw = lastRaw[side];
     if (raw >= 0 && raw < SIDE_OPEN_MM) wiggleHit = true;
-    if (t < 480) {
-      int seg = (t < 120 || t >= 360) ? 1 : -1;
+    if (t < 4 * WIG_SEG_MS) {
+      int seg = (t < WIG_SEG_MS || t >= 3 * WIG_SEG_MS) ? 1 : -1;
       int d = (turnDir == 'R') ? 1 : -1;
       applyMotorsDirect(PWM_TURN * seg * d, -PWM_TURN * seg * d, false);
       return;
     }
-    if (t < 480 + POST_TURN_SETTLE_MS) { applyMotors(0, 0, true); return;
+    if (t < 4 * WIG_SEG_MS + POST_TURN_SETTLE_MS) { applyMotors(0, 0, true); return;
     }
     if (wiggleHit) {                       // a wall answered: not an opening
       if (scriptPos) scriptPos--;          // restore the script entry
@@ -572,7 +632,7 @@ void stDecide(uint8_t rf, float F) {
 void stTurn(uint8_t rf, float F) {
   (void)rf;
   long t = timerMs();
-  long dur = (turnDir == 'L') ? TURN90_MS_L : TURN90_MS_R;
+  long dur = (turnDir == 'L') ? turn90L : turn90R;
   if (turnRetries) dur = dur * 6 / 10;     // finishing an interrupted pivot
   if (t <= dur) {
     int d = (turnDir == 'L') ? -1 : 1;
@@ -682,7 +742,7 @@ void stFinish(uint8_t rf, float F) {
     DBGLN(F("=== RUN COMPLETE ==="));
     return;
   }
-  applyMotors(PWM_SLOW, PWM_SLOW + TRIM_R_PWM, false);
+  applyMotors(PWM_SLOW, PWM_SLOW + trimR, false);
 }
 
 // ================= START SEQUENCE =================
@@ -770,6 +830,7 @@ void setup() {
   Serial.begin(115200);
 #endif
   DBGLN(F("Robot-Fable competition firmware"));
+  loadCal();
   loadScript();
   selfTestAndArm();
   runT0 = millis();
