@@ -195,6 +195,14 @@ the classic source of phantom 3 cm readings.
     rolling until the ~110 hold, right until ~120. Working floor for the
     race firmware: sustain ≈ 130 worst-case, static breakaway ≈ 140
     worst-case → PWM_FLOOR ~150, CRUISE 180, SLOW ~160, TURN 200.
+- ✅ **Test 5 (sensor stats, 100 samples/sensor, ruler-verified):** robot
+  centred with both wheels 77 mm true from their walls: FRONT mean 359.7
+  sd 3.9 (one 326 outlier — median filter's job), LEFT mean 87.9 sd 1.4,
+  RIGHT mean 90.3 sd 0.9, **0 misses on all three**. Mount offsets:
+  left reads true+10.9 mm, right reads true+13.3 mm; centred differential
+  right−left = **+2.4 mm** (supersedes the earlier hand-measured ~8.5 mm).
+  Firmware targets updated: TARGET_L 85.0, TARGET_R 87.5, SIDE_SUM 172.5
+  (offsets applied to the real track's 74 mm centred clearance).
 
 ## Team-reported field observations
 

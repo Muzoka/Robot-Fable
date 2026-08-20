@@ -64,9 +64,13 @@
 
 // ================= CONSTANTS (mirror sim/config.py; CAL = calibrate) ====
 #define CORRIDOR_MM     305.0f
-#define TARGET_L_MM     86.5f    // centred reading, left  (team-measured)
-#define TARGET_R_MM     95.0f    // centred reading, right (team-measured)
-#define SIDE_SUM_MM     181.5f
+// Calibration test 5 (2026-08-20): centred at 77 mm true per side the
+// sensors read L 87.9 / R 90.3 (sd 1.4/0.9, 0 misses) -> mount offsets
+// L +10.9 / R +13.3 mm; targets below are those offsets applied to the
+// real track's 74 mm-per-side centred clearance.
+#define TARGET_L_MM     85.0f    // centred reading, left  (calibrated)
+#define TARGET_R_MM     87.5f    // centred reading, right (calibrated)
+#define SIDE_SUM_MM     172.5f
 #define SIDE_OPEN_MM    220.0f
 #define TRACK_L_MM      (TARGET_L_MM + 70.0f)
 #define TRACK_R_MM      (TARGET_R_MM + 70.0f)
