@@ -136,13 +136,25 @@ void doneBlink() {                 // maneuver over: slow blink ~6 s
   Serial.println(F("(done - replug USB and reopen the Serial Monitor)"));
 }
 
-int readKey() {
-  for (;;) {
+int readKey() {                 // wait for one printable char, then drain
+  for (;;) {                    // the newline the Serial Monitor appends
     if (Serial.available()) {
       int c = Serial.read();
-      if (c > ' ') return c;
+      if (c > ' ') {
+        delay(3);
+        while (Serial.available() && Serial.peek() <= ' ') Serial.read();
+        return c;
+      }
     }
   }
+}
+
+bool abortKey() {               // true only on a PRINTABLE char; drains
+  while (Serial.available()) {  // stray newlines instead of aborting
+    if (Serial.peek() > ' ') { Serial.read(); return true; }
+    Serial.read();
+  }
+  return false;
 }
 
 void menu() {
@@ -186,7 +198,7 @@ void t2_deadband() {
     stopAll();
     digitalWrite(PIN_LED, LOW);
     delay(700);
-    if (Serial.available()) { Serial.read(); break; }
+    if (abortKey()) { Serial.println(F("(aborted)")); break; }
   }
   stopAll();
   Serial.println(F("done. Report: LEFT first moved at ___, RIGHT at ___"));
@@ -304,7 +316,8 @@ void t6_brake() {
 
 void t7_stream() {
   Serial.println(F("\n-- 7: LIVE STREAM. Move the robot by hand; any key stops."));
-  while (!Serial.available()) {
+  for (;;) {
+    if (abortKey()) return;
     for (uint8_t id = 0; id < 3; id++) {
       float v = pingOnce(id);
       Serial.print(SNAME[id][0]); Serial.print('=');
@@ -314,7 +327,6 @@ void t7_stream() {
     }
     Serial.println();
   }
-  Serial.read();
 }
 
 void t8_cruise() {
