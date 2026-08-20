@@ -167,6 +167,20 @@ the classic source of phantom 3 cm readings.
   only, so pre-session drive observations are superseded by the
   calibration measurements.
 - ✅ Motor directions verified correct (test 1): no inversion needed.
+- ✅ **Test 2 (deadband, on floor, measured 2026-08-20):**
+  - Breakaway ramp: RIGHT wheel first moved at **PWM 115**, LEFT at
+    **PWM 125**. Right in the expected band for TT+L298N at this weight —
+    hardware healthy. (The original firmware draft's CRUISE 110 would not
+    have moved the robot at all; all PWM constants shift upward.)
+  - Kick-and-hold (150→60 range): no hold PWM clearly sustained rolling;
+    150 "kinda pushed", right side stronger than left. Sustain floor is
+    evidently ≥ ~150 → re-testing with holds 190→110.
+  - Note the RIGHT motor is the stronger one at low PWM, opposite to the
+    old full-power right-drift observation (which predates real speed
+    control — caps-on data is superseded). Trim (test 3) measures the
+    real mismatch at the new cruise PWM 180.
+  - Calibration sketch constants raised: PWM_CRUISE 110→**180**,
+    PWM_TURN 120→**200** (pending confirmation by tests 3/4/8).
 
 ## Team-reported field observations
 

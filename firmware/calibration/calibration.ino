@@ -57,8 +57,8 @@
 
 #define UNPLUG_SECONDS 8
 
-int PWM_CRUISE = 110;
-int PWM_TURN = 120;
+int PWM_CRUISE = 180;   // raised after test 2: breakaway R=115 L=125 on floor
+int PWM_TURN = 200;     // pivots scrub the tires - need extra margin
 
 // persisted (EEPROM) tunables
 int TRIM_R = 1;
@@ -219,9 +219,10 @@ void t2_deadband() {
   Serial.println(F("    WRITE DOWN the PWM where the robot FIRST moves"));
   Serial.println(F("    (and whether one side clearly moved before the other)."));
   Serial.println(F("k = KICK test: 0.09 s full-power kick, then HOLD a lower"));
-  Serial.println(F("    PWM for 1 s. Steps DOWN from 150 to 60. WRITE DOWN the"));
-  Serial.println(F("    lowest hold PWM where it KEPT rolling after the kick"));
-  Serial.println(F("    (instead of stopping dead the moment the kick ends)."));
+  Serial.println(F("    PWM 0.8 s. Steps DOWN from 190 to 110. Give the USB"));
+  Serial.println(F("    cable slack and re-aim the robot between steps."));
+  Serial.println(F("    WRITE DOWN the lowest hold PWM where it KEPT rolling"));
+  Serial.println(F("    after the kick (vs stopping the moment the kick ends)."));
   Serial.println(F("s = back to menu. Any key during a run = abort."));
   for (;;) {
     int c = readKey();
@@ -240,13 +241,13 @@ void t2_deadband() {
       Serial.println(F("ramp done. Report: FIRST moved at PWM ___ (which side first?)"));
     } else if (c == 'k') {
       Serial.println(F("each step: short LUNGE then slow hold - that's intended"));
-      for (int p = 150; p >= 60; p -= 10) {
+      for (int p = 190; p >= 110; p -= 10) {
         Serial.print(F("kick, then hold PWM = ")); Serial.println(p);
         digitalWrite(PIN_LED, HIGH);
         motor(true, 255, false); motor(false, 255, false);
         delay(90);
         motor(true, p, false); motor(false, p, false);
-        delay(1000);
+        delay(800);
         stopAll();
         digitalWrite(PIN_LED, LOW);
         delay(900);
