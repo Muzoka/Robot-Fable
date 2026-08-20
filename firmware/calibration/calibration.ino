@@ -159,6 +159,7 @@ bool abortKey() {               // true only on a PRINTABLE char; drains
 
 void menu() {
   Serial.println(F("\n==== ROBOT-FABLE CALIBRATION ===="));
+  Serial.println(F("0 enable-wire check (box)"));
   Serial.println(F("1 motor direction (box)     2 deadband (pulses)"));
   Serial.println(F("3 straight trim (UNPLUG)    4 pivot timing (UNPLUG)"));
   Serial.println(F("5 sensor stats              6 brake distance (UNPLUG)"));
@@ -168,6 +169,33 @@ void menu() {
   Serial.print(F("  TURN_MS_L=")); Serial.print(TURN_MS_L);
   Serial.print(F("  TURN_MS_R=")); Serial.println(TURN_MS_R);
   Serial.println(F("choose> "));
+}
+
+void t0_enable() {
+  Serial.println(F("\n-- 0: ENABLE-WIRE CHECK. Robot on a box, wheels FREE."));
+  Serial.println(F("Each motor gets direction ON but speed=ZERO for 2 s."));
+  Serial.println(F("A correct enable wire means the wheel stays STILL."));
+  Serial.println(F("If a wheel SPINS during its zero phase, its ENA/ENB"));
+  Serial.println(F("wire is NOT reaching the Arduino pin (floating = full on)."));
+  delay(2500);
+  Serial.println(F("LEFT: speed ZERO now (must stay still)..."));
+  digitalWrite(PIN_IN1, HIGH); digitalWrite(PIN_IN2, LOW);
+  analogWrite(PIN_ENA, 0);
+  delay(2000);
+  Serial.println(F("LEFT: speed 140 now (should spin medium)..."));
+  analogWrite(PIN_ENA, 140);
+  delay(1200);
+  stopAll();
+  delay(1500);
+  Serial.println(F("RIGHT: speed ZERO now (must stay still)..."));
+  digitalWrite(PIN_IN3, HIGH); digitalWrite(PIN_IN4, LOW);
+  analogWrite(PIN_ENB, 0);
+  delay(2000);
+  Serial.println(F("RIGHT: speed 140 now (should spin medium)..."));
+  analogWrite(PIN_ENB, 140);
+  delay(1200);
+  stopAll();
+  Serial.println(F("Report per wheel: still during ZERO? spinning at 140?"));
 }
 
 void t1_direction() {
@@ -369,6 +397,7 @@ void setup() {
 void loop() {
   menu();
   switch (readKey()) {
+    case '0': t0_enable(); break;
     case '1': t1_direction(); break;
     case '2': t2_deadband(); break;
     case '3': t3_trim(); break;
