@@ -150,6 +150,12 @@ the classic source of phantom 3 cm readings.
   actually powers the robot in runs and where the barrel plug goes; the
   yellow-taped bundle on the top deck looks like it may be the cell pack.
 
+## Status updates (2026-08-20)
+
+- ✅ **D12 → L298N 5V wire removed by the team** — Fix 1 is DONE.
+- ✅ ENA→~D5 (left speed) and ENB→~D6 (right speed) re-confirmed by the
+  team; matches the firmware pinout exactly.
+
 ## Team-reported field observations
 
 - **The robot drifts slightly to the RIGHT when driven straight open-loop**

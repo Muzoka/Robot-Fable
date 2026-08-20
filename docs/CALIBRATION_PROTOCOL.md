@@ -2,15 +2,33 @@
 
 **Time needed: ~30–40 minutes. Do it on the real track floor (or the most
 similar floor you have), with the 18650 pack charged into the window you
-will race in.** Upload `firmware/calibration/calibration.ino`, open the
-Serial Monitor at **115200 baud**, and run the numbered tests in order.
-Copy the ENTIRE serial output (plus your notes where a test asks you to
-observe something) and paste it back to Claude — the numbers become the
-final constants in the competition firmware.
+will race in.** Upload `firmware/calibration/calibration.ino` with the
+Arduino IDE, open the Serial Monitor at **115200 baud** (line ending
+"Newline"), and run the numbered tests in order. Copy the ENTIRE serial
+output (plus your notes where a test asks you to observe something) and
+paste it back to Claude — the numbers become the final constants in the
+competition firmware.
+
+## Short USB cable? Built in.
+
+The sketch is designed so you NEVER walk with the laptop:
+
+- Keep the **battery slide switch ON** the whole session — the robot
+  keeps running when USB is unplugged.
+- Motion tests (3, 4, 6, 8) print `UNPLUG USB NOW` and count down 8 s
+  (LED double-blinks each second). Unplug, put the robot down, and it
+  runs the maneuver on battery, then stops with a slow LED blink.
+- Observe/measure, replug USB, reopen the Serial Monitor. The Arduino
+  **resets when the monitor opens — that's normal**; every adjustment
+  you made (trim, turn times) was already saved to EEPROM and the menu
+  prints the saved values each time.
+- Stationary tests (1, 2, 5, 7, 9) run with the cable connected; the
+  deadband test uses short pulses so the robot only creeps — keep it
+  next to the laptop and nudge it back between pulses.
 
 ## Before you start (one-time hardware checklist)
 
-1. ⚠ **Remove the D12 → L298N "5V" wire** (docs/HARDWARE_AUDIT.md Fix 1).
+1. ✅ D12 → L298N "5V" wire — **already removed by the team** (confirmed).
 2. Remove the small jumper caps on L298N ENA/ENB if still fitted; keep
    the 12V-regulator jumper ON; nothing connected to the 5V terminal.
 3. Secure the wiring: bundle the jumper loops flat against the chassis,
@@ -23,7 +41,7 @@ final constants in the competition firmware.
 | # | Test | Robot placement | You report |
 |---|---|---|---|
 | 1 | Motor direction | on a box, wheels free | did each wheel spin forward? |
-| 2 | Deadband | on the floor | PWM at which each wheel first moves |
+| 2 | Deadband | on the floor, next to the laptop | PWM at which each wheel first moves |
 | 3 | Straight trim | 2 m clear floor | final TRIM_R after a/d tuning |
 | 4 | Pivot timing | open floor, mark heading | final L/R ms; ×4-pivot error in degrees |
 | 5 | Sensor stats | centred in a corridor, square | full printout + ruler distance of each wheel to its wall |
